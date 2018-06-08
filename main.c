@@ -28,7 +28,7 @@ int Stack_realloc_buffer(Stack* stack);
 //! Reads strings from input into array. If string is empty, input ends.
 int read_lines(char*** array, size_t* len, size_t* buffer_size);
 //! Reads one string into variable, the string ends with a new line.
-int read_string(char** string);
+int read_string(char** string, bool* end_of_input);
 int realloc_string(char** string, size_t* buffer_size);
 //! Fill result array with strings that satisfy the condition of a regular
 //! bracket sequence. The strings are from string array of length len.
@@ -153,18 +153,18 @@ int Stack_realloc_buffer(Stack* stack) {
 }
 
 int read_lines(char*** array, size_t* len, size_t* buffer_size) {
+    bool end_of_input = false;
     for (*len = 0; ; (*len)++) {
         if (*len == *buffer_size) {
             if (realloc_string_array(array, buffer_size) == EXIT_FAILURE) {
                 return EXIT_FAILURE;
             }
         }
-        if (read_string(&((*array)[*len])) == EXIT_FAILURE) {
+        if (read_string(&((*array)[*len]), &end_of_input) == EXIT_FAILURE) {
             return EXIT_FAILURE;
         }
-
-        if (!strcmp((*array)[*len], "")) {
-            free((*array)[*len]);
+        if (end_of_input) {
+            (*len)++;
             break;
         }
     }
@@ -172,14 +172,14 @@ int read_lines(char*** array, size_t* len, size_t* buffer_size) {
     return EXIT_SUCCESS;
 }
 
-int read_string(char** string) {
+int read_string(char** string, bool* end_of_input) {
     *string = malloc(INITIAL_BUFFER_SIZE);
     if (!(*string)) {
         printf("[error]");
         return EXIT_FAILURE;
     }
     size_t buffer_size = INITIAL_BUFFER_SIZE;
-    for (size_t index = 0; ; index++) {
+    for (size_t index = 0; ;) {
         if (index == buffer_size) {
             if (realloc_string(string, &buffer_size) == EXIT_FAILURE) {
                 free(*string);
@@ -187,11 +187,34 @@ int read_string(char** string) {
                 return EXIT_FAILURE;
             }
         }
-        (*string)[index] = (char)getchar();
-        if ((*string)[index] == '\n') {
+        int symbol = getchar();
+
+//        switch (symbol) {
+//            case '\0':
+//                printf("NULL\n");
+//                break;
+//            case EOF:
+//                printf("EOF\n");
+//                break;
+//            default:
+//                printf("%c", symbol);
+//        }
+
+        if (symbol == '\0') { // symbols can be after '\0', we ignore it
+            continue;
+        }
+        if (symbol == EOF) {
+            *end_of_input = true;
             (*string)[index] = '\0';
             break;
         }
+        if (symbol == '\n') {
+            (*string)[index] = '\0';
+            break;
+        }
+
+        (*string)[index] = (char)symbol;
+        index++;
     }
 
     return EXIT_SUCCESS;
