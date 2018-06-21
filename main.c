@@ -4,7 +4,18 @@
 #include <string.h>
 
 #define INITIAL_BUFFER_SIZE 8
-#define CHECK_INTERRUPTED 2
+
+// Errors
+#define SUCCESS 0
+#define MEMORY_ERROR 1
+#define WRONG_ARGUMENT 2
+
+#define CHECK_INTERRUPTED 3
+
+// Stack constants
+#define STACK_SUCCESS 0
+#define STACK_WRONG_ARGUMENT 4
+#define STACK_MEMORY_ERROR 5
 
 typedef struct Stack {
 //    private part
@@ -18,10 +29,10 @@ typedef struct Stack {
 //! Stack_realloc_buffer returns EXIT_FAILURE if memory error occurs.
 Stack* Stack_init();
 int Stack_push(Stack* stack, char symbol);
-char Stack_top(const Stack* stack);
-void Stack_pop(Stack* stack);
-size_t Stack_get_size(const Stack* stack);
-bool Stack_is_empty(const Stack* stack);
+int Stack_top(const Stack* stack, char* symb);
+int Stack_pop(Stack* stack, char* symb);
+int Stack_get_size(const Stack* stack, size_t* size);
+int Stack_is_empty(const Stack* stack, bool* res);
 void Stack_free(Stack* stack);
 int Stack_realloc_buffer(Stack* stack);
 
@@ -33,10 +44,11 @@ int realloc_string(char** string, size_t* buffer_size);
 //! Fill result array with strings that satisfy the condition of a regular
 //! bracket sequence. The strings are from string array of length len.
 //! Returns the number of strings or -1 if error occurs.
-long get_correct_strings(const char** array, size_t len, char*** result);
+int get_correct_strings(const char** array, size_t len, char*** result,
+                         size_t* correct_count);
 //! Check one string. Returns true if it satisfies regular bracket sequence,
 //! otherwise false or -1 if error occurs.
-int check_string(const char* string);
+int check_string(const char* string, bool* is_correct_string);
 //! The symbol is bracket '(' or ').
 bool is_bracket(char symbol);
 //! Check brackets from the stack.
@@ -55,35 +67,38 @@ int main() {
     char** strings = malloc(sizeof(char*) * INITIAL_BUFFER_SIZE);
     if (!strings) {
         printf("[error]");
-        return 0; // EXIT_FAILURE
+        return 0; // MEMORY_ERROR
     }
     size_t len = 0;
     size_t buffer_size = INITIAL_BUFFER_SIZE;
-
-    if (read_lines(&strings, &len, &buffer_size) == EXIT_FAILURE) {
+    int result_code = read_lines(&strings, &len, &buffer_size);
+    if (result_code != SUCCESS) {
         free_string_array(strings, len);
-        return 0; // EXIT_FAILURE
+        return 0; // result_code
     }
 
     char** result = malloc(sizeof(char*) * INITIAL_BUFFER_SIZE);
     if (!result) {
         printf("[error]");
         free_string_array(strings, len);
-        return 0; // EXIT_FAILURE
-    }
-    long res_count = get_correct_strings((const char**)strings, len, &result);
-    if (res_count == -1) {
-        free_string_array(strings, len);
-        free(result);
-        return 0; // EXIT_FAILURE
+        return 0; // MEMORY_ERROR
     }
 
-    for (size_t i = 0; i < res_count; i++) {
+    size_t correct_count;
+    result_code = get_correct_strings((const char**)strings, len, &result,
+            &correct_count);
+    if (result_code != SUCCESS) {
+        free_string_array(strings, len);
+        free(result);
+        return 0; // result_code
+    }
+
+    for (size_t i = 0; i < correct_count; i++) {
         printf("%s\n", result[i]);
     }
 
     free_string_array(strings, len);
-    free_string_array(result, res_count);
+    free_string_array(result, correct_count);
 
     return 0;
 }
@@ -107,98 +122,126 @@ Stack* Stack_init() {
 }
 
 int Stack_push(Stack* stack, char symbol) {
+    if (!stack) {
+        return STACK_WRONG_ARGUMENT;
+    }
     if (stack->_real_size == stack->_buffer_size) {
-        if (Stack_realloc_buffer(stack) == EXIT_FAILURE) {
-            return EXIT_FAILURE;
+        int result_code = Stack_realloc_buffer(stack);
+        if (result_code != STACK_SUCCESS) {
+            return result_code;
         }
     }
     stack->_buffer[stack->_real_size] = symbol;
     stack->_real_size++;
 
-    return EXIT_SUCCESS;
+    return STACK_SUCCESS;
 }
 
-char Stack_top(const Stack* stack) {
-    return stack->_buffer[stack->_real_size - 1];
+int Stack_top(const Stack* stack, char* symbol) {
+    if (!stack) {
+        return STACK_WRONG_ARGUMENT;
+    }
+    *symbol = stack->_buffer[stack->_real_size - 1];
+
+    return STACK_SUCCESS;
 }
 
-void Stack_pop(Stack* stack) {
+int Stack_pop(Stack* stack, char* symbol) {
+    if (!stack) {
+        return STACK_WRONG_ARGUMENT;
+    }
+    *symbol = stack->_buffer[stack->_real_size - 1];
     stack->_real_size--;
+
+    return STACK_SUCCESS;
 }
 
-size_t Stack_get_size(const Stack* stack) {
-    return stack->_real_size;
+int Stack_get_size(const Stack* stack, size_t* size) {
+    if (!stack)
+        return STACK_WRONG_ARGUMENT;
+    *size = stack->_real_size;
+
+    return STACK_SUCCESS;
 }
 
-bool Stack_is_empty(const Stack* stack) {
-    return stack->_real_size == 0;
+int Stack_is_empty(const Stack* stack, bool* res) {
+    if (!stack)
+        return STACK_WRONG_ARGUMENT;
+    *res = stack->_real_size == 0;
+
+    return STACK_SUCCESS;
 }
 
 void Stack_free(Stack* stack) {
+    if (!stack)
+        return;
     free(stack->_buffer);
     free(stack);
+    stack = NULL;
 }
 
 int Stack_realloc_buffer(Stack* stack) {
+    if (!stack) {
+        return STACK_WRONG_ARGUMENT;
+    }
     size_t new_size = stack->_buffer_size * 2;
     char* tmp = realloc(stack->_buffer, sizeof(stack->_buffer) * new_size);
     if (!tmp) {
         printf("[error]");
-        return EXIT_FAILURE;
+        return STACK_MEMORY_ERROR;
     }
     stack->_buffer = tmp;
     stack->_buffer_size = new_size;
 
-    return EXIT_SUCCESS;
+    return STACK_SUCCESS;
 }
 
 int read_lines(char*** array, size_t* len, size_t* buffer_size) {
+    if (!array || !len || !buffer_size)
+        return WRONG_ARGUMENT;
     bool end_of_input = false;
-    for (*len = 0; ; (*len)++) {
+    *len = 0;
+    int result_code = 0;
+    while (true) {
         if (*len == *buffer_size) {
-            if (realloc_string_array(array, buffer_size) == EXIT_FAILURE) {
-                return EXIT_FAILURE;
+            result_code = realloc_string_array(array, buffer_size);
+            if (result_code != SUCCESS) {
+                return result_code;
             }
         }
-        if (read_string(&((*array)[*len]), &end_of_input) == EXIT_FAILURE) {
-            return EXIT_FAILURE;
+        result_code = read_string(&((*array)[*len]), &end_of_input);
+        if (result_code != SUCCESS) {
+            return result_code;
         }
         if (end_of_input) {
             (*len)++;
             break;
         }
+        (*len)++;
     }
 
-    return EXIT_SUCCESS;
+    return SUCCESS;
 }
 
 int read_string(char** string, bool* end_of_input) {
+    if (!string || !end_of_input)
+        return WRONG_ARGUMENT;
     *string = malloc(INITIAL_BUFFER_SIZE);
     if (!(*string)) {
         printf("[error]");
-        return EXIT_FAILURE;
+        return MEMORY_ERROR;
     }
     size_t buffer_size = INITIAL_BUFFER_SIZE;
     for (size_t index = 0; ;) {
         if (index == buffer_size) {
-            if (realloc_string(string, &buffer_size) == EXIT_FAILURE) {
+            int result_code = realloc_string(string, &buffer_size);
+            if (result_code != SUCCESS) {
                 free(*string);
                 *string = NULL;
-                return EXIT_FAILURE;
+                return result_code;
             }
         }
         int symbol = getchar();
-
-//        switch (symbol) {
-//            case '\0':
-//                printf("NULL\n");
-//                break;
-//            case EOF:
-//                printf("EOF\n");
-//                break;
-//            default:
-//                printf("%c", symbol);
-//        }
 
         if (symbol == '\0') { // symbols can be after '\0', we ignore it
             continue;
@@ -217,46 +260,53 @@ int read_string(char** string, bool* end_of_input) {
         index++;
     }
 
-    return EXIT_SUCCESS;
+    return SUCCESS;
 }
 
 int realloc_string(char** string, size_t* buffer_size) {
+    if (!string || !buffer_size)
+        return WRONG_ARGUMENT;
     size_t new_size = *buffer_size * 2;
     char* tmp = realloc(*string, new_size);
     if (!tmp) {
         printf("[error]");
-        return EXIT_FAILURE;
+        return MEMORY_ERROR;
     }
     *string = tmp;
     *buffer_size = new_size;
 
-    return EXIT_SUCCESS;
+    return SUCCESS;
 }
 
-long get_correct_strings(const char** array, size_t len, char*** result) {
-    size_t count = 0;
+int get_correct_strings(const char** array, size_t len, char*** result, size_t* count) {
+    if (!array || !result || !count)
+        return WRONG_ARGUMENT;
+    *count = 0;
     size_t buffer_size = INITIAL_BUFFER_SIZE;
     for (size_t i = 0; i < len; i++) {
-        int is_correct = check_string(array[i]);
-        if (is_correct == -1) {
-            return -1;
+        bool is_correct_string = false;
+        int result_code = check_string(array[i], &is_correct_string);
+        if (result_code != SUCCESS) {
+            return result_code;
         }
-        if (is_correct == true) {
-            if (add_string(array[i], result, &buffer_size, &count)
-                == EXIT_FAILURE) {
-                return -1;
+        if (is_correct_string) {
+            result_code = add_string(array[i], result, &buffer_size, count);
+            if (result_code != SUCCESS) {
+                return result_code;
             }
         }
     }
 
-    return count;
+    return SUCCESS;
 }
 
-int check_string(const char* string) {
+int check_string(const char* string, bool* is_correct_string) {
+    if (!string || !is_correct_string)
+        return WRONG_ARGUMENT;
     Stack* brackets_stack = Stack_init();
     if (!brackets_stack) {
         printf("[error]");
-        return -1;
+        return STACK_MEMORY_ERROR;
     }
 
     int result_code = 0;
@@ -267,21 +317,30 @@ int check_string(const char* string) {
             result_code = bracket_step(brackets_stack, symbol);
             if (result_code == CHECK_INTERRUPTED)
                 break;
-            if (result_code == EXIT_FAILURE) {
+            if (result_code != STACK_SUCCESS) {
                 Stack_free(brackets_stack);
-                return -1;
+                return result_code;
             }
         }
     }
-
-    if (Stack_is_empty(brackets_stack) && result_code == EXIT_SUCCESS) {
+    bool is_empty = false;
+    int stack_result_code = Stack_is_empty(brackets_stack, &is_empty);
+    if (stack_result_code) {
         Stack_free(brackets_stack);
-        return true;
+        return stack_result_code;
+    }
+
+    if (is_empty && result_code == SUCCESS) {
+        Stack_free(brackets_stack);
+        *is_correct_string = true;
+        return SUCCESS;
     }
 
     Stack_free(brackets_stack);
 
-    return false;
+    *is_correct_string = false;
+
+    return SUCCESS;
 }
 
 bool is_bracket(char symbol) {
@@ -290,24 +349,33 @@ bool is_bracket(char symbol) {
 }
 
 int bracket_step(Stack* brackets_stack, char symbol) {
+    if (!brackets_stack)
+        return WRONG_ARGUMENT;
     char last_bracket = 0;
+    int result_code = 0;
     if (is_opening_bracket(symbol)) {
-        if (Stack_push(brackets_stack, symbol) == EXIT_FAILURE) {
-            return EXIT_FAILURE;
+        result_code = Stack_push(brackets_stack, symbol);
+        if (result_code != STACK_SUCCESS) {
+            return result_code;
         }
     }
     else { // is closing bracket
-        if (Stack_is_empty(brackets_stack))
+        bool is_empty = false;
+        result_code = Stack_is_empty(brackets_stack, &is_empty);
+        if (result_code != STACK_SUCCESS)
+            return result_code;
+        if (is_empty)
             return CHECK_INTERRUPTED;
-        last_bracket = Stack_top(brackets_stack);
+        Stack_top(brackets_stack, &last_bracket);
         if (is_one_brackets_type(last_bracket, symbol)) {
-            Stack_pop(brackets_stack);
+            char popped = '\0';
+            Stack_pop(brackets_stack, &popped);
         }
         else
             return CHECK_INTERRUPTED;
     }
 
-    return EXIT_SUCCESS;
+    return SUCCESS;
 }
 
 bool is_opening_bracket(char symbol) {
@@ -325,9 +393,12 @@ bool is_one_brackets_type(char first, char second) {
 
 int add_string(const char* string, char*** array, size_t* buffer_size,
                size_t* count) {
+    if (!string || !array || !buffer_size || !count)
+        return WRONG_ARGUMENT;
     if (*count == *buffer_size) {
-        if (realloc_string_array(array, buffer_size) == EXIT_FAILURE) {
-            return EXIT_FAILURE;
+        int result_code = realloc_string_array(array, buffer_size);
+        if (result_code != SUCCESS) {
+            return result_code;
         }
     }
 
@@ -335,26 +406,28 @@ int add_string(const char* string, char*** array, size_t* buffer_size,
     (*array)[*count] = malloc(full_str_len);
     if (!(*array)[*count]) {
         printf("[error]");
-        return EXIT_FAILURE;
+        return MEMORY_ERROR;
     }
     memcpy((*array)[*count], string, full_str_len);
     (*count)++;
 
-    return EXIT_SUCCESS;
+    return SUCCESS;
 }
 
 
 int realloc_string_array(char*** array, size_t* buffer_size) {
+    if (!array || !buffer_size)
+        return WRONG_ARGUMENT;
     size_t new_size = *buffer_size * 2;
     char** tmp = realloc(*array, sizeof(char*) * new_size);
     if (!tmp) {
         printf("[error]");
-        return EXIT_FAILURE;
+        return MEMORY_ERROR;
     }
     *array = tmp;
     *buffer_size = new_size;
 
-    return EXIT_SUCCESS;
+    return SUCCESS;
 }
 
 void free_string_array(char** array, size_t len) {
@@ -362,7 +435,9 @@ void free_string_array(char** array, size_t len) {
         return;
     }
     for (size_t i = 0; i < len; i++) {
-        free(array[i]);
+        if (array[i])
+            free(array[i]);
     }
     free(array);
+    array = NULL;
 }
