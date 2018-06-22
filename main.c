@@ -138,7 +138,7 @@ int Stack_push(Stack* stack, char symbol) {
 }
 
 int Stack_top(const Stack* stack, char* symbol) {
-    if (!stack) {
+    if (!stack || !symbol) {
         return STACK_WRONG_ARGUMENT;
     }
     *symbol = stack->_buffer[stack->_real_size - 1];
@@ -147,7 +147,7 @@ int Stack_top(const Stack* stack, char* symbol) {
 }
 
 int Stack_pop(Stack* stack, char* symbol) {
-    if (!stack) {
+    if (!stack || !symbol) {
         return STACK_WRONG_ARGUMENT;
     }
     *symbol = stack->_buffer[stack->_real_size - 1];
@@ -157,7 +157,7 @@ int Stack_pop(Stack* stack, char* symbol) {
 }
 
 int Stack_get_size(const Stack* stack, size_t* size) {
-    if (!stack)
+    if (!stack || !size)
         return STACK_WRONG_ARGUMENT;
     *size = stack->_real_size;
 
@@ -165,7 +165,7 @@ int Stack_get_size(const Stack* stack, size_t* size) {
 }
 
 int Stack_is_empty(const Stack* stack, bool* res) {
-    if (!stack)
+    if (!stack || !res)
         return STACK_WRONG_ARGUMENT;
     *res = stack->_real_size == 0;
 
